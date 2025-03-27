@@ -1,0 +1,21 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LiDAR Radar HUD</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body { background: black; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        #radar { max-width: 100%; max-height: 100vh; }
+    </style>
+</head>
+<body>
+    <img id="radar" src="">
+    <script>
+        var socket = io();
+        socket.on('radar_update', function(data) {
+            document.getElementById('radar').src = data.image;
+        });
+    </script>
+</body>
+</html>
