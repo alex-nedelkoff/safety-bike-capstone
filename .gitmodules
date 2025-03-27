@@ -1,3 +1,6 @@
 [submodule "rplidar_sdk"]
 	path = rplidar_sdk
 	url = https://github.com/Slamtec/rplidar_sdk.git
+[submodule "hailo-rpi5-examples"]
+	path = hailo-rpi5-examples
+	url = https://github.com/hailo-ai/hailo-rpi5-examples.git
