@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+import zmq
+import json
+from datetime import datetime
+
+print("Starting IMU data listener on port 5558...")
+print("Press Ctrl+C to stop")
+print("-" * 50)
+
+context = zmq.Context()
+socket = context.socket(zmq.SUB)
+socket.connect("tcp://localhost:5558")
+socket.setsockopt_string(zmq.SUBSCRIBE, "")
+
+try:
+    while True:
+        data = json.loads(socket.recv_string())
+        timestamp = datetime.fromtimestamp(data["timestamp"]).strftime('%H:%M:%S.%f')[:-3]
+        
+        imu = data["imu"]
+        print(f"\n[{timestamp}] IMU Data:")
+        print(f"Gyroscope (angular velocity):")
+        print(f"  Roll:  {imu['roll']:>8.1f}°/s")
+        print(f"  Pitch: {imu['pitch']:>8.1f}°/s")
+        print(f"  Yaw:   {imu['yaw']:>8.1f}°/s")
+        print(f"Acceleration:")
+        print(f"  X: {imu['accel_x']:>8.1f} m/s²")
+        print(f"  Y: {imu['accel_y']:>8.1f} m/s²")
+        print(f"  Z: {imu['accel_z']:>8.1f} m/s²")
+        print("-" * 50)
+
+except KeyboardInterrupt:
+    print("\nStopping listener...")
+    socket.close()
+    context.term()
