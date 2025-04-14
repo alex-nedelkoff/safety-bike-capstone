@@ -1,0 +1,19 @@
+[all]
+arm_64bit=1
+kernel=vmlinuz
+cmdline=cmdline.txt
+initramfs initrd.img followkernel
+
+# Set GPU memory to minimum needed for headless operation
+gpu_mem=128
+
+# Basic display config
+hdmi_force_hotplug=1
+hdmi_group=2
+hdmi_mode=87
+hdmi_cvt=800 480 60 6 0 0 0
+
+# Enable VC4 graphics
+dtoverlay=vc4-kms-v3d
+
+[all] 

@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+import time
+import board
+import busio
+import zmq
+import json
+import numpy as np
+from adafruit_mpu6050 import MPU6050
+
+# Initialize I2C
+i2c = busio.I2C(board.SCL, board.SDA)
+
+# Initialize IMU with specific address
+mpu = MPU6050(i2c, address=0x68)  # MPU6050 at address 0x68
+
+# Initialize ZMQ
+context = zmq.Context()
+socket = context.socket(zmq.PUB)
+socket.bind("tcp://*:5558")  # Port 5558 for IMU data
+
+# Acceleration threshold (m/s²)
+ACCEL_THRESHOLD = 10.0
+
+def calibrate_sensor(samples=200):
+    """Calibrate the sensor by collecting samples while stationary"""
+    print(f"Calibrating sensor... Please keep it stationary for {samples/10} seconds")
+    
+    # Arrays to store calibration data
+    gyro_data = []
+    accel_data = []
+    
+    # Collect samples
+    for _ in range(samples):
+        gyro = mpu.gyro
+        accel = mpu.acceleration
+        
+        gyro_data.append(gyro)
+        accel_data.append(accel)
+        time.sleep(0.05)  # 20Hz sampling
+    
+    # Calculate calibration values
+    gyro_cal = np.mean(gyro_data, axis=0)
+    accel_cal = np.mean(accel_data, axis=0)
+    
+    # Calculate standard deviations
+    gyro_std = np.std(gyro_data, axis=0)
+    accel_std = np.std(accel_data, axis=0)
+    
+    print("\nCalibration Results:")
+    print("Gyroscope offsets (degrees/s):")
+    print(f"  Roll:  {gyro_cal[0]:.3f} ± {gyro_std[0]:.3f}")
+    print(f"  Pitch: {gyro_cal[1]:.3f} ± {gyro_std[1]:.3f}")
+    print(f"  Yaw:   {gyro_cal[2]:.3f} ± {gyro_std[2]:.3f}")
+    print("\nAccelerometer offsets (m/s²):")
+    print(f"  X: {accel_cal[0]:.3f} ± {accel_std[0]:.3f}")
+    print(f"  Y: {accel_cal[1]:.3f} ± {accel_std[1]:.3f}")
+    print(f"  Z: {accel_cal[2]:.3f} ± {accel_std[2]:.3f}")
+    
+    return gyro_cal, accel_cal
+
+def check_significant_acceleration(accel):
+    """Check if any acceleration component exceeds threshold"""
+    return any(abs(a) > ACCEL_THRESHOLD for a in accel)
+
+# Perform calibration
+gyro_cal, accel_cal = calibrate_sensor()
+
+print(f"\nPublishing IMU data on port 5558 (threshold: ±{ACCEL_THRESHOLD} m/s²)")
+
+try:
+    while True:
+        # Get raw IMU data
+        gyro = mpu.gyro
+        accel = mpu.acceleration
+        
+        # Apply calibration
+        calibrated_gyro = [g - c for g, c in zip(gyro, gyro_cal)]
+        calibrated_accel = [a - c for a, c in zip(accel, accel_cal)]
+        
+        # Prepare data dictionary
+        data = {
+            "timestamp": time.time(),
+            "imu": {
+                "roll": calibrated_gyro[0],
+                "pitch": calibrated_gyro[1],
+                "yaw": calibrated_gyro[2],
+                "accel_x": calibrated_accel[0],
+                "accel_y": calibrated_accel[1],
+                "accel_z": calibrated_accel[2]
+            }
+        }
+        
+        # Always publish if acceleration exceeds threshold or if it was previously exceeded
+        if check_significant_acceleration(calibrated_accel):
+            socket.send_string(json.dumps(data))
+            print(f"Significant acceleration detected:")
+            print(f"  X: {calibrated_accel[0]:.1f} m/s²")
+            print(f"  Y: {calibrated_accel[1]:.1f} m/s²")
+            print(f"  Z: {calibrated_accel[2]:.1f} m/s²")
+        elif hasattr(check_significant_acceleration, 'was_warning') and check_significant_acceleration.was_warning:
+            # Send one final message when acceleration returns to normal
+            socket.send_string(json.dumps(data))
+            print("Acceleration returned to normal values")
+            check_significant_acceleration.was_warning = False
+        
+        # Update warning state
+        check_significant_acceleration.was_warning = check_significant_acceleration(calibrated_accel)
+        
+        time.sleep(0.1)  # 10Hz update rate
+
+except KeyboardInterrupt:
+    print("\nStopping...")
+    socket.close()
+    context.term()
